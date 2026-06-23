@@ -105,6 +105,8 @@ func main() {
 
 	r.Get("/reset", handler.ResetStock(rdb))
 
+	r.Get("/stock", handler.StockHandler(rdb))
+
 	// Metrics (Prometheus) – we'll use a simple /metrics endpoint for demo
 	r.Get("/metrics", handler.Metrics)
 

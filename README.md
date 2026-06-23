@@ -289,6 +289,7 @@ The repository follows standard Go project layouts, separating business logic fr
 * **`internal/db/redis.go` (Redis Abstraction):** Wraps the `go-redis` client. Exposes the raw `DecrLua` script variable and a `NewRedis` factory. Handles connection string parsing.
 * **`internal/db/postgres.go` (PostgreSQL Abstraction):** Wraps the `pgx` driver. Exposes a simple `InsertOrder` method. Connection pooling is configured via the `DATABASE_URL` (handled automatically by `pgx`).
 * **`internal/handler/reserve.go` (HTTP Handler):** Handles the atomic Lua decrement. Generates a unique `order_id` (UUID), pushes the JSON payload to the stream, and executes synchronous inventory rollbacks if the queue publish fails.
+* **`internal/handler/stock.go` (Stock Reader):** Exposes a `GET /stock` endpoint that returns the current inventory without modifying it. Used by the frontend to display the live stock count.
 * **`internal/handler/reset.go` (Admin Reset):** Exposes a `/reset` endpoint (protected by a query parameter key) that sets the Redis inventory back to 100. This allows the demo to be replayed without restarting the container. The double‑click on the stock number in the UI triggers this endpoint automatically for recruiters.
 * **`internal/worker/consumer.go` (Background Worker):** Auto-initializes the Redis Consumer Group via `XGROUP CREATE`. Uses `XREADGROUP` for blocking reads, writes idempotently to PostgreSQL, and utilizes poison-pill handling (acking malformed JSON to prevent infinite retry loops).
 * **`migrations/001_init.up.sql` (Schema Definition):** Creates the `products` and `orders` tables. Seeds the single product (ID: 1) with `inventory_count = 100`.
@@ -316,6 +317,7 @@ FSx-flash-sale-backend-go/
 │   │   └── health.go               # Health, readiness, and metrics endpoints
 │   │   └── index.go                # Serves the interactive landing page (go:embed)
 │   │   └── reset.go                # Admin reset endpoint (key-protected)
+│   │   └── stock.go                # Used by the frontend to display the live stock count.
 │   ├── models/
 │   │   └── order.go                # Order struct definition
 │   └── worker/

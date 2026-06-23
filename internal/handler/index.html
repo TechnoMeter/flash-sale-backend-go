@@ -278,35 +278,15 @@
 
     <script>
         // Keeps the exact API paths, methods, and payloads from your original code.
-        async function fetchStock() {
-            const stockEl = document.getElementById('stockDisplay');
-            const resultEl = document.getElementById('result');
-            
-            try {
-                const res = await fetch('/reserve', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ product_id: 1, user_id: 'demo' })
-                });
-                const data = await res.json();
-                
-                stockEl.textContent = data.stock !== undefined ? data.stock : 0;
-                
-                // Reset styling on success
-                stockEl.style.color = '#fff';
-                stockEl.style.textShadow = '0 0 20px rgba(0, 203, 255, 0.7), 0 2px 4px rgba(0, 0, 0, 0.8)';
-                return data;
-            } catch (e) {
-                // UI feedback if the backend server is not running
-                stockEl.textContent = 'ERR';
-                stockEl.style.color = '#ff4444';
-                stockEl.style.textShadow = '0 0 20px rgba(255, 68, 68, 0.5), 0 2px 4px rgba(0, 0, 0, 0.8)';
-                
-                resultEl.textContent = '⚠️ API Offline: Cannot fetch initial stock.';
-                resultEl.style.color = '#ff4444';
-                return null;
-            }
-        }
+async function fetchStock() {
+    try {
+        const res = await fetch('/stock');
+        const data = await res.json();
+        document.getElementById('stockDisplay').textContent = data.stock ?? 0;
+    } catch {
+        document.getElementById('stockDisplay').textContent = 'ERR';
+    }
+}
 
         async function reserve() {
             const btn = document.getElementById('buyBtn');
