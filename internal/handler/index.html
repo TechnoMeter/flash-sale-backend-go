@@ -1,39 +1,284 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>⚡ Flash Sale Backend</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>⚡ FSx - Flash Sale Backend</title>
     <style>
-        body { font-family: system-ui; max-width: 600px; margin: 80px auto; text-align: center; padding: 20px; }
-        .badge { display: inline-block; background: #0B0D0E; color: white; padding: 4px 12px; border-radius: 20px; font-size: 14px; }
-        .stock { font-size: 48px; font-weight: bold; margin: 20px 0; }
-        button { background: #00ADD8; color: white; border: none; padding: 14px 40px; font-size: 18px; border-radius: 8px; cursor: pointer; }
-        button:disabled { opacity: 0.5; cursor: not-allowed; }
-        #result { margin-top: 20px; font-family: monospace; background: #f4f4f4; padding: 10px; border-radius: 4px; }
-        .tech { margin: 30px 0; }
-        .tech span { background: #e0e0e0; padding: 4px 12px; border-radius: 4px; margin: 0 4px; font-size: 14px; }
+        /* --- Aero Aurora Background --- */
+        body {
+            margin: 0;
+            min-height: 100vh;
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background: radial-gradient(circle at 10% 10%, #003b5c, transparent 50%),
+                        radial-gradient(circle at 90% 90%, #007a88, transparent 50%),
+                        radial-gradient(circle at 50% 50%, #009b62, transparent 60%),
+                        #00111a;
+            background-size: 150% 150%;
+            animation: auroraBg 15s ease infinite alternate;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: #ffffff;
+            padding: 20px;
+        }
+
+        @keyframes auroraBg {
+            0% { background-position: 0% 0%; }
+            100% { background-position: 100% 100%; }
+        }
+
+        /* --- Aero Glass Window Container --- */
+        .aero-window {
+            width: 100%;
+            max-width: 580px;
+            border-radius: 12px;
+            /* Glassmorphism background */
+            background: linear-gradient(135deg, rgba(255, 255, 255, 0.15) 0%, rgba(255, 255, 255, 0.05) 100%);
+            /* Layered shadows for depth and the white inset border */
+            box-shadow: 
+                0 16px 40px rgba(0, 0, 0, 0.5),
+                inset 0 1px 1px rgba(255, 255, 255, 0.8),
+                inset 1px 0 1px rgba(255, 255, 255, 0.3),
+                inset -1px 0 1px rgba(255, 255, 255, 0.3);
+            backdrop-filter: blur(20px) saturate(130%);
+            -webkit-backdrop-filter: blur(20px) saturate(130%);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* Top half reflection (Classic Vista trait) */
+        .aero-window::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0; height: 50%;
+            background: linear-gradient(to bottom, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0) 100%);
+            pointer-events: none;
+            z-index: 1;
+        }
+
+        /* --- Titlebar --- */
+        .aero-titlebar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 16px;
+            background: linear-gradient(to bottom, rgba(255, 255, 255, 0.25) 0%, rgba(255, 255, 255, 0.05) 100%);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+            box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.5);
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+            font-size: 13px;
+            position: relative;
+            z-index: 2;
+        }
+
+        .controls span {
+            display: inline-flex;
+            width: 32px; height: 20px;
+            justify-content: center; align-items: center;
+            border-radius: 4px;
+            margin-left: 4px;
+            background: rgba(0, 0, 0, 0.15);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.3);
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .controls .close { background: rgba(220, 50, 50, 0.4); }
+        .controls .close:hover { background: rgba(220, 50, 50, 0.8); }
+
+        /* --- Content Area --- */
+        .content {
+            padding: 40px 30px;
+            text-align: center;
+            position: relative;
+            z-index: 2;
+        }
+
+        .badge {
+            display: inline-block;
+            background: linear-gradient(180deg, #1a1c20 0%, #000000 100%);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.3), 0 2px 8px rgba(0,0,0,0.4);
+            color: #00ffcc;
+            padding: 6px 16px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 24px;
+        }
+
+        h1 {
+            margin: 0 0 8px 0;
+            font-size: 36px;
+            font-weight: 300;
+            letter-spacing: -0.5px;
+            text-shadow: 0 2px 6px rgba(0, 0, 0, 0.6);
+        }
+
+        p {
+            color: rgba(255, 255, 255, 0.85);
+            font-size: 15px;
+            margin-bottom: 30px;
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+        }
+
+        .tech span {
+            display: inline-block;
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.2);
+            padding: 6px 14px;
+            border-radius: 20px;
+            margin: 0 6px;
+            font-size: 13px;
+            backdrop-filter: blur(10px);
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+        }
+
+        /* --- Stock Display --- */
+        .stock-container {
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(0, 0, 0, 0.5);
+            box-shadow: 
+                inset 0 4px 12px rgba(0, 0, 0, 0.6),
+                0 1px 1px rgba(255, 255, 255, 0.15);
+            border-radius: 12px;
+            padding: 24px;
+            margin: 30px auto;
+            width: fit-content;
+            min-width: 220px;
+        }
+
+        .stock-label {
+            text-transform: uppercase;
+            font-size: 12px;
+            letter-spacing: 2px;
+            color: rgba(255, 255, 255, 0.6);
+            margin-bottom: 8px;
+        }
+
+        .stock {
+            font-size: 64px;
+            font-weight: bold;
+            margin: 0;
+            color: #ffffff;
+            text-shadow: 0 0 20px rgba(0, 203, 255, 0.7), 0 2px 4px rgba(0, 0, 0, 0.8);
+            font-family: 'Consolas', 'Courier New', monospace;
+            transition: all 0.3s ease;
+        }
+
+        /* --- Glossy Aero Button --- */
+        button {
+            position: relative;
+            background: linear-gradient(180deg, rgba(0, 173, 216, 0.7) 0%, rgba(0, 87, 108, 0.8) 49%, rgba(0, 52, 65, 0.9) 50%, rgba(0, 108, 135, 0.8) 100%);
+            border: 1px solid rgba(255, 255, 255, 0.4);
+            border-radius: 8px;
+            color: white;
+            padding: 14px 48px;
+            font-size: 18px;
+            font-weight: 600;
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+            box-shadow: 
+                inset 0 1px 1px rgba(255, 255, 255, 0.8),
+                0 4px 12px rgba(0, 0, 0, 0.4);
+            cursor: pointer;
+            transition: all 0.2s ease;
+            overflow: hidden;
+            font-family: inherit;
+        }
+
+        button::before {
+            content: '';
+            position: absolute;
+            top: 1px; left: 1px; right: 1px; height: 45%;
+            background: linear-gradient(180deg, rgba(255, 255, 255, 0.5) 0%, rgba(255, 255, 255, 0.05) 100%);
+            border-radius: 6px 6px 0 0;
+            pointer-events: none;
+        }
+
+        button:hover:not(:disabled) {
+            background: linear-gradient(180deg, rgba(0, 203, 255, 0.7) 0%, rgba(0, 117, 148, 0.8) 49%, rgba(0, 82, 105, 0.9) 50%, rgba(0, 148, 185, 0.8) 100%);
+            box-shadow: 
+                inset 0 1px 2px rgba(255, 255, 255, 0.9), 
+                0 0 20px rgba(0, 173, 216, 0.5),
+                0 4px 12px rgba(0, 0, 0, 0.5);
+        }
+
+        button:active:not(:disabled) {
+            box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.6);
+            background: rgba(0, 52, 65, 0.9);
+            transform: translateY(1px);
+        }
+
+        button:disabled {
+            filter: grayscale(80%);
+            opacity: 0.6;
+            cursor: not-allowed;
+            box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.3);
+        }
+
+        /* --- Inset Console Result Area --- */
+        #result {
+            margin-top: 25px;
+            background: rgba(0, 0, 0, 0.4);
+            border: 1px solid rgba(0, 0, 0, 0.6);
+            box-shadow: 
+                inset 0 2px 6px rgba(0, 0, 0, 0.6),
+                0 1px 1px rgba(255, 255, 255, 0.15);
+            padding: 14px 16px;
+            border-radius: 6px;
+            font-family: 'Consolas', 'Courier New', monospace;
+            font-size: 13px;
+            color: #00ffcc;
+            min-height: 18px;
+            transition: all 0.3s ease;
+        }
     </style>
 </head>
 <body>
-    <div class="badge">⚡ Production Ready</div>
-    <h1>Flash Sale Backend</h1>
-    <p>Atomic inventory management • Asynchronous persistence • 1,000+ RPS</p>
-    
-    <div class="tech">
-        <span>Go 1.22</span>
-        <span>PostgreSQL 15</span>
-        <span>Redis 7</span>
-    </div>
 
-    <div>
-        <div>📦 Remaining Stock</div>
-        <div class="stock" id="stockDisplay">--</div>
-    </div>
+    <div class="aero-window">
+        <div class="aero-titlebar">
+            <div class="title">FSx Server Console</div>
+            <div class="controls">
+                <span>_</span>
+                <span>□</span>
+                <span class="close">×</span>
+            </div>
+        </div>
+        
+        <div class="content">
+            <div class="badge">⚡ Production Ready</div>
+            <h1>FSx</h1>
+            <p>Atomic inventory management • Asynchronous persistence • 1,000+ RPS</p>
+            
+            <div class="tech">
+                <span>Go 1.25</span>
+                <span>PostgreSQL 15</span>
+                <span>Redis 7</span>
+            </div>
 
-    <button id="buyBtn" onclick="reserve()">🔥 Reserve One</button>
-    <div id="result">Click the button to test the API</div>
+            <div class="stock-container">
+                <div class="stock-label">📦 Remaining Stock</div>
+                <div class="stock" id="stockDisplay">--</div>
+            </div>
+
+            <button id="buyBtn" onclick="reserve()">🔥 Reserve One</button>
+            <div id="result">Ready. Click the button to test the API.</div>
+        </div>
+    </div>
 
     <script>
+        // Keeps the exact API paths, methods, and payloads from your original code.
         async function fetchStock() {
+            const stockEl = document.getElementById('stockDisplay');
+            const resultEl = document.getElementById('result');
+            
             try {
                 const res = await fetch('/reserve', {
                     method: 'POST',
@@ -41,18 +286,33 @@
                     body: JSON.stringify({ product_id: 1, user_id: 'demo' })
                 });
                 const data = await res.json();
-                document.getElementById('stockDisplay').textContent = data.stock !== undefined ? data.stock : 0;
+                
+                stockEl.textContent = data.stock !== undefined ? data.stock : 0;
+                
+                // Reset styling on success
+                stockEl.style.color = '#fff';
+                stockEl.style.textShadow = '0 0 20px rgba(0, 203, 255, 0.7), 0 2px 4px rgba(0, 0, 0, 0.8)';
                 return data;
             } catch (e) {
-                document.getElementById('stockDisplay').textContent = '❌';
+                // UI feedback if the backend server is not running
+                stockEl.textContent = 'ERR';
+                stockEl.style.color = '#ff4444';
+                stockEl.style.textShadow = '0 0 20px rgba(255, 68, 68, 0.5), 0 2px 4px rgba(0, 0, 0, 0.8)';
+                
+                resultEl.textContent = '⚠️ API Offline: Cannot fetch initial stock.';
+                resultEl.style.color = '#ff4444';
                 return null;
             }
         }
 
         async function reserve() {
             const btn = document.getElementById('buyBtn');
+            const resultEl = document.getElementById('result');
+            const stockEl = document.getElementById('stockDisplay');
+            
             btn.disabled = true;
-            document.getElementById('result').textContent = '⏳ Processing...';
+            resultEl.textContent = '⏳ Processing...';
+            resultEl.style.color = '#00ffcc'; // Reset to default terminal color
             
             try {
                 const res = await fetch('/reserve', {
@@ -65,20 +325,29 @@
                 let msg = '';
                 if (res.status === 200) {
                     msg = `✅ Success! Stock remaining: ${data.stock}`;
-                    document.getElementById('stockDisplay').textContent = data.stock;
+                    stockEl.textContent = data.stock;
+                    
+                    // Flash effect on success
+                    stockEl.style.color = '#00ffcc';
+                    setTimeout(() => { stockEl.style.color = '#fff'; }, 300);
+
                 } else if (res.status === 429) {
-                    msg = '❌ Sold Out! (This is a good sign – the system prevented overselling)';
+                    msg = '❌ Sold Out! (Overselling prevented)';
+                    resultEl.style.color = '#ffaa00'; // Warning color
                 } else {
                     msg = `⚠️ Error: ${data.message || res.status}`;
+                    resultEl.style.color = '#ff4444'; // Error color
                 }
-                document.getElementById('result').textContent = msg;
+                resultEl.textContent = msg;
             } catch (e) {
-                document.getElementById('result').textContent = '⚠️ Network error – try again.';
+                resultEl.textContent = '⚠️ Network error – is the API running?';
+                resultEl.style.color = '#ff4444';
             }
+            
             btn.disabled = false;
         }
 
-        // Load initial stock
+        // Load initial stock on mount
         fetchStock();
     </script>
 </body>

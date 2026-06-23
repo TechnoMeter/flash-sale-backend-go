@@ -15,7 +15,7 @@
   
   <br><br>
   
-  <h1>⚡ High-Concurrency Flash Sale Backend</h1>
+  <h1>⚡ FSx: High-Concurrency Flash Sale Backend</h1>
   <p><strong>Atomic inventory management, asynchronous persistence, and sub-50ms latency at 1,000+ RPS.</strong></p>
 </div>
 
