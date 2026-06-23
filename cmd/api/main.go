@@ -103,6 +103,8 @@ func main() {
 	// Landing page
 	r.Get("/", handler.IndexPage)
 
+	r.Get("/reset", handler.ResetStock(rdb))
+
 	// Metrics (Prometheus) – we'll use a simple /metrics endpoint for demo
 	r.Get("/metrics", handler.Metrics)
 

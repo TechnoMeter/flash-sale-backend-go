@@ -257,6 +257,9 @@
             <h1>FSx</h1>
             <p>Atomic inventory management • Asynchronous persistence • 1,000+ RPS</p>
             
+            <p>
+    (double-click stock to reset demo)
+</p>
             <div class="tech">
                 <span>Go 1.25</span>
                 <span>PostgreSQL 15</span>
@@ -346,6 +349,22 @@
             
             btn.disabled = false;
         }
+
+// Hidden reset: double-click the stock number
+document.getElementById('stockDisplay').addEventListener('dblclick', async function() {
+    const resultEl = document.getElementById('result');
+    try {
+        const res = await fetch('/reset?key=reset2026');
+        const text = await res.text();
+        resultEl.textContent = '🔄 ' + text;
+        resultEl.style.color = '#00ffcc';
+        fetchStock(); // Refresh stock
+    } catch (e) {
+        resultEl.textContent = '⚠️ Reset failed';
+        resultEl.style.color = '#ff4444';
+    }
+});
+
 
         // Load initial stock on mount
         fetchStock();

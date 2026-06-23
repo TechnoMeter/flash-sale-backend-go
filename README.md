@@ -27,7 +27,10 @@
 
 This project is a fully containerized, horizontally-scalable microservice actively deployed on **Railway.app**. The infrastructure leverages Railway’s internal networking to securely connect the Go application, Redis, and PostgreSQL without exposing data layers to the public internet.
 
-👉 👉 **[Access the Live Interactive API Here](https://flash-sale-backend-go-production.up.railway.app/)**  *(Note: The live endpoint is a REST API intended for programmatic access. Use the provided k6 script or `curl` to test the `/reserve` endpoint. The free tier instance may spin down after 15 minutes of inactivity; allow 5–10 seconds for the first cold start).*
+👉 **[Access the Live Interactive Demo Here](https://flash-sale-backend-go-production.up.railway.app/)**  
+*(Double-click the stock number to reset the demo to 100 units – perfect for repeated testing.)*
+
+> **Note:** The free tier instance may spin down after 15 minutes of inactivity; allow 5–10 seconds for the first cold start.
 
 ---
 
@@ -286,6 +289,7 @@ The repository follows standard Go project layouts, separating business logic fr
 * **`internal/db/redis.go` (Redis Abstraction):** Wraps the `go-redis` client. Exposes the raw `DecrLua` script variable and a `NewRedis` factory. Handles connection string parsing.
 * **`internal/db/postgres.go` (PostgreSQL Abstraction):** Wraps the `pgx` driver. Exposes a simple `InsertOrder` method. Connection pooling is configured via the `DATABASE_URL` (handled automatically by `pgx`).
 * **`internal/handler/reserve.go` (HTTP Handler):** Handles the atomic Lua decrement. Generates a unique `order_id` (UUID), pushes the JSON payload to the stream, and executes synchronous inventory rollbacks if the queue publish fails.
+* **`internal/handler/reset.go` (Admin Reset):** Exposes a `/reset` endpoint (protected by a query parameter key) that sets the Redis inventory back to 100. This allows the demo to be replayed without restarting the container. The double‑click on the stock number in the UI triggers this endpoint automatically for recruiters.
 * **`internal/worker/consumer.go` (Background Worker):** Auto-initializes the Redis Consumer Group via `XGROUP CREATE`. Uses `XREADGROUP` for blocking reads, writes idempotently to PostgreSQL, and utilizes poison-pill handling (acking malformed JSON to prevent infinite retry loops).
 * **`migrations/001_init.up.sql` (Schema Definition):** Creates the `products` and `orders` tables. Seeds the single product (ID: 1) with `inventory_count = 100`.
 
@@ -309,7 +313,9 @@ flash-sale/
 │   │   └── redis.go                # go-redis client & Lua script definition
 │   ├── handler/
 │   │   └── reserve.go              # /reserve HTTP handler with compensation logic
-│   │   └── health.go               # Defines readiness and liveness probes to check application status.
+│   │   └── health.go               # Health, readiness, and metrics endpoints
+│   │   └── index.go                # Serves the interactive landing page (go:embed)
+│   │   └── reset.go                # Admin reset endpoint (key-protected)
 │   ├── models/
 │   │   └── order.go                # Order struct definition
 │   └── worker/
@@ -326,7 +332,6 @@ flash-sale/
 ├── docker-compose.yml              # Spins up PostgreSQL + Redis locally
 ├── go.mod                          # Go module definition (pgx, redis, testify, godotenv)
 ├── go.sum                          # Dependency checksums
-├── MakeFile                        # Automates compilation, building, and cleanup tasks for this project.
 └── README.md                       # This file
 ```
 
@@ -382,6 +387,10 @@ Expected Response:
 ```json
 {"success":true,"stock":99}
 ```
+
+**Admin Reset:** To reset stock to 100 during local development, send a GET request to:
+```bash
+curl "http://localhost:8080/reset?key=reset2026"
 
 ---
 
