@@ -112,7 +112,7 @@ This is my tribute to the engineers who built the systems that amazed me years a
 
 The application enforces a strict separation of concerns between the **Synchronous Read/Write Path** (HTTP request lifecycle) and the **Asynchronous Write Path** (background persistence). Redis acts as the **Source of Truth for Inventory** during the flash sale window, while PostgreSQL serves as the **System of Record** after the storm passes.
 
-```
+```mermaid
 %%{init: {'theme': 'base', 'themeVariables': { 'fontFamily': 'arial', 'lineColor': '#555555'}}}%%
 flowchart TD
     classDef client fill:#e0f7fa,stroke:#006064,stroke-width:2px,color:#000,rx:5,ry:5;
@@ -169,7 +169,7 @@ flowchart TD
 
 ### Critical Path Walkthrough (Sequence Diagram)
 
-```
+```mermaid
 %%{init: {'theme': 'base', 'themeVariables': { 'fontFamily': 'arial', 'actorBkg': '#ffffff', 'actorBorder': '#1565c0', 'sequenceNumberColor': '#ffffff'}}}%%
 sequenceDiagram
     autonumber
