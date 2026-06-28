@@ -115,56 +115,34 @@ The application enforces a strict separation of concerns between the **Synchrono
 ```mermaid
 %%{init: {'theme': 'base', 'themeVariables': { 'fontFamily': 'arial', 'lineColor': '#555555'}}}%%
 flowchart TD
-    classDef client fill:#e0f7fa,stroke:#006064,stroke-width:2px,color:#000,rx:5,ry:5;
-    classDef edge fill:#fff8e1,stroke:#f57f17,stroke-width:2px,color:#000,rx:5,ry:5;
-    classDef api fill:#e3f2fd,stroke:#1565c0,stroke-width:2px,color:#000,rx:8,ry:8;
-    classDef worker fill:#f3e5f5,stroke:#6a1b9a,stroke-width:2px,color:#000,rx:5,ry:5;
-    classDef recon fill:#efebe9,stroke:#5d4037,stroke-width:2px,color:#000,rx:5,ry:5;
-    classDef redis fill:#ffebee,stroke:#c62828,stroke-width:2px,color:#000,rx:5,ry:5;
-    classDef db fill:#e8eaf6,stroke:#283593,stroke-width:2px,color:#000,rx:5,ry:5;
+    classDef components fill:#1e2c3a,stroke:#4a8aaa,stroke-width:1.5px,color:#fff;
+    classDef state fill:#1e2c3a,stroke:#ffaa44,stroke-width:1.5px,color:#fff;
+    classDef db fill:#1e2c3a,stroke:#66bbaa,stroke-width:1.5px,color:#fff;
 
-    subgraph Tier1 ["1. Client / Load Generator"]
-        Client("K6 Load Test / cURL / UI Dashboard"):::client
+    Client("K6 / UI Dashboard"):::components
+    LB{"Load Balancer"}:::components
+
+    subgraph App ["Stateless Go Pod (Horizontally Scalable)"]
+        API(["HTTP API Handler"]):::components
+        Worker>"Background Worker Group"]:::components
+        Cron["Reconciler Cron"]:::components
     end
 
-    subgraph Tier2 ["2. Edge (Load Balancing)"]
-        LB{"Railway Internal<br/>Load Balancer"}:::edge
-    end
+    Redis[("Redis 7.0 <br> Cache & Streams")]:::state
+    PG[("PostgreSQL 15 <br> System of Record")]:::db
 
-    subgraph Tier3 ["3. Application Layer (Stateless Go Pod Replicas)"]
-        subgraph Pod1 ["Go Pod Node 1 (Runtime Process)"]
-            API1(["API Handler"]):::api
-            W1>"Worker Goroutine"]:::worker
-            R1["Reconciler Cron"]:::recon
-        end
-        subgraph PodN ["Go Pod Node N (Horizontally Scaled)"]
-            APIN(["API Handler"]):::api
-            WN>"Worker Goroutine"]:::worker
-            RN["Reconciler Cron"]:::recon
-        end
-    end
-
-    subgraph Tier4 ["4. Stateful Data & Queue Layer"]
-        direction TB
-        Redis[("Redis 7.0 Cluster<br/>- inventory:product:1<br/>- sales:orders (Stream)<br/>- orders:dead (DLQ Stream)")]:::redis
-        PG[("PostgreSQL 15<br/>- products (Catalog)<br/>- orders (System of Record)")]:::db
-    end
-
+    %% Request Flow
     Client ===> LB
-    LB ---> API1 & APIN
+    LB ---> API
+    API --->|1. Atomic Lua DECR + XADD| Redis
+    
+    %% Async Processing Flow
+    Redis -.->|2. XREADGROUP Pull| Worker
+    Worker --->|3. Persist Orders| PG
+    Worker --->|4. XACK| Redis
 
-    %% Synchronous Request Path
-    API1 & APIN -- "Atomic Lua Execution<br/>(DECR + XADD)" ---> Redis
-    Redis -. "Return Remaining Stock / Message ID" .-> API1 & APIN
-
-    %% Asynchronous Processing Path
-    Redis -. "XREADGROUP (Batch Consumer Group Delivery)" .-> W1 & WN
-    W1 & WN -- "Idempotent Batch INSERT" ---> PG
-    W1 & WN -- "XACK (Acknowledge Msg) / XADD (DLQ Failures)" ---> Redis
-
-    %% Out-of-band Reconciliation Path
-    R1 & RN -- "1. GET Redis Stock<br/>2. Count DB Orders" ---> Tier4
-    R1 & RN -- "3. SET Corrected Stock (If Mismatch)" ---> Redis
+    %% Reconciliation Flow
+    Cron -.->|Sync Check Every 5m| Redis & PG
 ```
 
 ### Critical Path Walkthrough (Sequence Diagram)
@@ -173,90 +151,32 @@ flowchart TD
 %%{init: {'theme': 'base', 'themeVariables': { 'fontFamily': 'arial', 'actorBkg': '#ffffff', 'actorBorder': '#1565c0', 'sequenceNumberColor': '#ffffff'}}}%%
 sequenceDiagram
     autonumber
+    actor Client
+    participant API as Go API Handler
+    participant Redis as Redis Cache & Stream
+    participant Worker as Go Background Worker
+    participant PG as PostgreSQL 15
+
+    %% Synchronous Path
+    Note over Client, Redis: Synchronous Critical Path (Sub-50ms)
+    Client->>API: POST /reserve {product_id, user_id}
+    API->>Redis: EVALSHA atomic_reserve.lua
+    Redis-->>API: Return results (Stock Count & Msg ID)
     
-    box rgb(245, 245, 245) "External Tier"
-        participant Client
-    end
-    
-    box rgb(227, 242, 253) "Application Process Runtime"
-        participant API as Go API Handler
-        participant Worker as Go Worker Goroutine
-        participant Recon as Reconciler Cron
-    end
-    
-    box rgb(255, 235, 238) "In-Memory State & Queue"
-        participant Redis as Redis (Stock + Streams)
-    end
-    
-    box rgb(232, 245, 233) "Persistent Storage"
-        participant PG as PostgreSQL 15
+    alt Sold Out or Redis Error
+        API-->>Client: Return 429 / 503 Response
+    else Reservation Successful
+        API-->>Client: Return 200 OK (Remaining Stock)
     end
 
-    %% PHASE 1: SYNCHRONOUS INTAKE
-    rect rgb(255, 248, 225)
-        Note over Client, Redis: Phase 1: Synchronous Ingest Critical Path
-        Client->>+API: POST /reserve {product_id, user_id}
-        API->>+Redis: EVALSHA atomic_reserve.lua (Keys: inventory, Stream: sales:orders)
-        
-        alt stock < 0
-            Redis-->>API: Return {-2, ""} (Sold Out Condition)
-            API-->>Client: HTTP 429 Too Many Requests
-        else XADD stream failure occurred
-            Redis-->>API: Return {-1, ""} (Internal Rollback Executed)
-            API-->>Client: HTTP 503 Service Unavailable
-        else stock >= 0 and XADD successful
-            Redis-->>-API: Return {stock, msg_id}
-            API-->>-Client: HTTP 200 OK {success: true, stock: X}
-        end
-    end
-
-    %% PHASE 2: ASYNC PERSISTENCE
-    rect rgb(243, 229, 245)
-        Note over Worker, PG: Phase 2: Asynchronous Micro-Batch Persistence (Decoupled Loop)
-        loop Every 1 Second Ticker
-            Worker->>+Redis: XREADGROUP (Group: flash-sale-workers, Count: 50, Block: 0)
-            Redis-->>-Worker: Array of stream messages
-            
-            alt Message Payload Malformed / Unmarshal Fails
-                Note over Worker: Poison Pill Safeguard Caught
-                Worker->>Redis: XACK sales:orders (Acknowledge to drop message)
-            else Valid Order Structural Payload
-                loop Up to 3 Retries with Exponential Backoff
-                    Worker->>+PG: INSERT INTO orders (id, product_id, user_id)
-                    alt Write Successful
-                        PG-->>Worker: DB Write OK
-                        Note over Worker: Terminate Retry Loop
-                    else Database/Pool Connectivity Error
-                        PG-->>-Worker: Error Response
-                        Note over Worker: Sleep (attempt * 100ms)
-                    end
-                end
-                
-                alt Retention Successful
-                    Worker->>Redis: XACK sales:orders (Mark Complete)
-                else Max Retries Exceeded (Circuit Exhaustion)
-                    Worker->>Redis: XADD orders:dead (Publish to Dead Letter Queue)
-                    Worker->>Redis: XACK sales:orders (Evict from active processing stream)
-                end
-            end
-        end
-    end
-
-    %% PHASE 3: OUT OF BAND CRON
-    rect rgb(224, 242, 241)
-        Note over Recon, PG: Phase 3: Out-of-Band Integrity Protection
-        loop Every 5 Minutes via Cron Expression
-            Recon->>+Redis: GET inventory:product:1
-            Redis-->>-Recon: current_redis_stock
-            Recon->>+PG: SELECT COUNT(*) WHERE product_id = 1
-            PG-->>-Recon: persisted_order_count
-            
-            Note over Recon: Compute Expected Stock = (100 - count)
-            alt current_redis_stock != expected_stock
-                Note over Recon: Structural Drift Identified
-                Recon->>Redis: SET inventory:product:1 expected_stock (Capped at 0)
-            end
-        end
+    %% Asynchronous Path
+    Note over Worker, PG: Asynchronous Persistence Layer
+    loop Every 1 Second
+        Worker->>Redis: XREADGROUP (Request Batch)
+        Redis-->>Worker: Return Pending Orders
+        Worker->>PG: Idempotent Order Insertion
+        PG-->>Worker: Confirm Write
+        Worker->>Redis: XACK (Acknowledge Messages)
     end
 ```
 
