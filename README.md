@@ -16,7 +16,7 @@
   <br><br>
   
   <h1>⚡ FSx: High-Concurrency Flash Sale Backend</h1>
-  <p><strong>Atomic inventory management, asynchronous persistence, and sub-50ms latency at 1,000+ RPS.</strong></p>
+  <p><strong>Atomic inventory management, asynchronous persistence, and sub-250ms latency at 1,000+ RPS.</strong></p>
 </div>
 
 <br />
@@ -75,7 +75,7 @@ This platform completely decouples the **inventory check** from the **order pers
 
 ### Engineering Motivations
 
-1. **Sub-50ms Latency:** By using Redis (in-memory) exclusively during the request/response cycle, we avoid disk I/O. The Go HTTP handler performs a single Lua `EVAL` call and a single `XADD` call—both are network-bound, but Redis processes them in under 500µs.
+1. **Sub-250ms Latency:** By using Redis (in-memory) exclusively during the request/response cycle, we avoid disk I/O. The Go HTTP handler performs a single Lua `EVAL` call and a single `XADD` call—both are network-bound, but Redis processes them in under 500µs.
 2. **Database Thrift:** PostgreSQL is notoriously bad at handling thousands of concurrent `INSERT` statements due to MVCC cleanup and WAL churn. By moving writes to a single-threaded worker, PostgreSQL receives a steady, predictable stream of `INSERT` commands—preventing lock contention and connection pool exhaustion.
 3. **Stateless Horizontal Scaling:** The Go API nodes do not store any session state. If traffic spikes, we simply spin up more replicas behind a load balancer. All replicas point to the same Redis and PostgreSQL instances, and Redis Streams' **Consumer Groups** handle duplicate message dispatching gracefully.
 4. **Durable Queuing:** Redis Streams persist messages to disk (via AOF/RDB snapshots). If the background worker crashes, the messages stay in the `pending` list and are re-delivered on restart. No order is ever lost.
@@ -158,7 +158,7 @@ sequenceDiagram
     participant PG as PostgreSQL 15
 
     %% Synchronous Path
-    Note over Client, Redis: Synchronous Critical Path (Sub-50ms)
+    Note over Client, Redis: Synchronous Critical Path (Sub-250ms)
     Client->>API: POST /reserve {product_id, user_id}
     API->>Redis: EVALSHA atomic_reserve.lua
     Redis-->>API: Return results (Stock Count & Msg ID)
