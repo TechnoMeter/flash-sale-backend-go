@@ -16,6 +16,7 @@ import (
 	"github.com/go-chi/httprate"
 	"github.com/joho/godotenv"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+
 	"github.com/TechnoMeter/FSx-flash-sale-backend-go/internal/db"
 	"github.com/TechnoMeter/FSx-flash-sale-backend-go/internal/handler"
 	"github.com/TechnoMeter/FSx-flash-sale-backend-go/internal/metrics"
@@ -96,22 +97,14 @@ func main() {
 	r.Use(middleware.RealIP)
 	r.Use(middleware.Logger)
 
-	// Custom rate limiter that skips if X-Test-Mode header is present
-	rateLimiter := func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if r.Header.Get("X-Test-Mode") == "true" {
-				next.ServeHTTP(w, r)
-				return
-			}
-			httprate.LimitByIP(rateLimitRPS, time.Second)(next).ServeHTTP(w, r)
-		})
-	}
-	r.Use(rateLimiter)
+	// ----- RATE LIMITER (no bypass) -----
+	// Apply IP-based rate limiting to all requests.
+	r.Use(httprate.LimitByIP(rateLimitRPS, time.Second))
 
 	r.Get("/health", handler.HealthCheck)
 	r.Get("/ready", handler.ReadinessCheck(pg, rdb))
 	r.Get("/", handler.IndexPage)
-	r.Get("/reset", handler.ResetStock(rdb))
+	r.Get("/reset", handler.ResetStock(rdb))          // now reads RESET_KEY from env
 	r.Get("/stock", handler.StockHandler(rdb))
 	r.Get("/stats", handler.StatsHandler(pg, rdb))
 	r.Handle("/metrics", promhttp.Handler())
