@@ -350,6 +350,7 @@ Create a `.env` file in the project root:
 DATABASE_URL=postgres://postgres:postgres@localhost:5432/flash_sale?sslmode=disable
 REDIS_URL=redis://localhost:6379
 PORT=8080
+RESET_KEY=your-strong-secret-here
 ```
 
 ### 3. Local Development Setup
@@ -395,7 +396,10 @@ Expected Response:
 
 **Admin Reset:** To reset stock to 100 during local development, send a GET request to:
 ```bash
-curl "http://localhost:8080/reset?key=reset2026"
+# Replace YOUR_RESET_KEY with the value set in environment variable RESET_KEY
+curl "http://localhost:8080/reset?key=YOUR_RESET_KEY"
+```
+**Note:** In production, set `RESET_KEY` in Railway’s environment variables.
 
 ---
 
