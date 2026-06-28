@@ -112,54 +112,65 @@ This is my tribute to the engineers who built the systems that amazed me years a
 
 The application enforces a strict separation of concerns between the **Synchronous Read/Write Path** (HTTP request lifecycle) and the **Asynchronous Write Path** (background persistence). Redis acts as the **Source of Truth for Inventory** during the flash sale window, while PostgreSQL serves as the **System of Record** after the storm passes.
 
-```mermaid
+```
 %%{init: {'theme': 'base', 'themeVariables': { 'fontFamily': 'arial', 'lineColor': '#555555'}}}%%
 flowchart TD
     classDef client fill:#e0f7fa,stroke:#006064,stroke-width:2px,color:#000,rx:5,ry:5;
     classDef edge fill:#fff8e1,stroke:#f57f17,stroke-width:2px,color:#000,rx:5,ry:5;
     classDef api fill:#e3f2fd,stroke:#1565c0,stroke-width:2px,color:#000,rx:8,ry:8;
-    classDef redis fill:#ffebee,stroke:#c62828,stroke-width:2px,color:#000,rx:5,ry:5;
     classDef worker fill:#f3e5f5,stroke:#6a1b9a,stroke-width:2px,color:#000,rx:5,ry:5;
+    classDef recon fill:#efebe9,stroke:#5d4037,stroke-width:2px,color:#000,rx:5,ry:5;
+    classDef redis fill:#ffebee,stroke:#c62828,stroke-width:2px,color:#000,rx:5,ry:5;
     classDef db fill:#e8eaf6,stroke:#283593,stroke-width:2px,color:#000,rx:5,ry:5;
 
     subgraph Tier1 ["1. Client / Load Generator"]
-        Client("K6 / cURL / Mobile App"):::client
+        Client("K6 Load Test / cURL / UI Dashboard"):::client
     end
 
     subgraph Tier2 ["2. Edge (Load Balancing)"]
         LB{"Railway Internal<br/>Load Balancer"}:::edge
     end
 
-    subgraph Tier3 ["3. Application Layer (Stateless Go Pods)"]
-        API1(["API Pod 1"]):::api
-        API2(["API Pod 2"]):::api
-        API3(["API Pod 3"]):::api
+    subgraph Tier3 ["3. Application Layer (Stateless Go Pod Replicas)"]
+        subgraph Pod1 ["Go Pod Node 1 (Runtime Process)"]
+            API1(["API Handler"]):::api
+            W1>"Worker Goroutine"]:::worker
+            R1["Reconciler Cron"]:::recon
+        end
+        subgraph PodN ["Go Pod Node N (Horizontally Scaled)"]
+            APIN(["API Handler"]):::api
+            WN>"Worker Goroutine"]:::worker
+            RN["Reconciler Cron"]:::recon
+        end
     end
 
-    subgraph Tier4 ["4. Data & Queue Layer"]
+    subgraph Tier4 ["4. Stateful Data & Queue Layer"]
         direction TB
-        Redis[("Redis 7.0<br/>(Inventory + Streams)")]:::redis
-        Worker>"Background Worker<br/>(Consumer)"]:::worker
-        PG[("PostgreSQL 15<br/>(Source of Truth)")]:::db
+        Redis[("Redis 7.0 Cluster<br/>- inventory:product:1<br/>- sales:orders (Stream)<br/>- orders:dead (DLQ Stream)")]:::redis
+        PG[("PostgreSQL 15<br/>- products (Catalog)<br/>- orders (System of Record)")]:::db
     end
 
     Client ===> LB
-    LB ---> API1 & API2 & API3
+    LB ---> API1 & APIN
 
-    API1 -- "Atomic Lua script<br/>(DECR + XADD)" ---> Redis
-    API2 -- " (returns stock / error) " ---> Redis
-    API3 ---> Redis
-    
-    Redis -.-> API1 & API2 & API3
+    %% Synchronous Request Path
+    API1 & APIN -- "Atomic Lua Execution<br/>(DECR + XADD)" ---> Redis
+    Redis -. "Return Remaining Stock / Message ID" .-> API1 & APIN
 
-    Worker -- "XREADGROUP" ---> Redis
-    Worker -- "INSERT INTO orders" ---> PG
-    Worker -- "XACK" ---> Redis
+    %% Asynchronous Processing Path
+    Redis -. "XREADGROUP (Batch Consumer Group Delivery)" .-> W1 & WN
+    W1 & WN -- "Idempotent Batch INSERT" ---> PG
+    W1 & WN -- "XACK (Acknowledge Msg) / XADD (DLQ Failures)" ---> Redis
+
+    %% Out-of-band Reconciliation Path
+    R1 & RN -- "1. GET Redis Stock<br/>2. Count DB Orders" ---> Tier4
+    R1 & RN -- "3. SET Corrected Stock (If Mismatch)" ---> Redis
 ```
 
 ### Critical Path Walkthrough (Sequence Diagram)
 
-```%%{init: {'theme': 'base', 'themeVariables': { 'fontFamily': 'arial', 'actorBkg': '#ffffff', 'actorBorder': '#1565c0', 'sequenceNumberColor': '#ffffff'}}}%%
+```
+%%{init: {'theme': 'base', 'themeVariables': { 'fontFamily': 'arial', 'actorBkg': '#ffffff', 'actorBorder': '#1565c0', 'sequenceNumberColor': '#ffffff'}}}%%
 sequenceDiagram
     autonumber
     
@@ -167,46 +178,84 @@ sequenceDiagram
         participant Client
     end
     
-    box rgb(227, 242, 253) "Application Tier"
-        participant API as Go API Node
+    box rgb(227, 242, 253) "Application Process Runtime"
+        participant API as Go API Handler
+        participant Worker as Go Worker Goroutine
+        participant Recon as Reconciler Cron
     end
     
-    box rgb(255, 235, 238) "Cache & Queue Tier"
-        participant Redis as Redis (Inventory + Streams)
+    box rgb(255, 235, 238) "In-Memory State & Queue"
+        participant Redis as Redis (Stock + Streams)
     end
     
-    box rgb(243, 229, 245) "Persistence Tier"
-        participant Worker as Go Worker
-        participant PG as PostgreSQL
+    box rgb(232, 245, 233) "Persistent Storage"
+        participant PG as PostgreSQL 15
     end
 
-    Client->>+API: POST /reserve {product, user}
-    
-    rect rgb(255, 243, 224)
-        Note over API,Redis: Step 1: Atomic Decrement + Queue Append (Lua)
-        API->>+Redis: EVAL "DECR + XADD" script (keys, args)
-        Redis-->>-API: Returns [stock, msg_id] OR [-2, ''] / [-1, '']
+    %% PHASE 1: SYNCHRONOUS INTAKE
+    rect rgb(255, 248, 225)
+        Note over Client, Redis: Phase 1: Synchronous Ingest Critical Path
+        Client->>+API: POST /reserve {product_id, user_id}
+        API->>+Redis: EVALSHA atomic_reserve.lua (Keys: inventory, Stream: sales:orders)
+        
+        alt stock < 0
+            Redis-->>API: Return {-2, ""} (Sold Out Condition)
+            API-->>Client: HTTP 429 Too Many Requests
+        else XADD stream failure occurred
+            Redis-->>API: Return {-1, ""} (Internal Rollback Executed)
+            API-->>Client: HTTP 503 Service Unavailable
+        else stock >= 0 and XADD successful
+            Redis-->>-API: Return {stock, msg_id}
+            API-->>-Client: HTTP 200 OK {success: true, stock: X}
+        end
     end
-    
-    alt stock == -2 (Sold Out)
-        API-->>Client: HTTP 429 (Too Many Requests)
-    else stock == -1 (XADD failed, rollback done)
-        API-->>Client: HTTP 503 (Service Unavailable)
-    else stock >= 0
-        API-->>Client: HTTP 200 {success: true, stock: X}
-    end
-    
-    deactivate API
 
-    rect rgb(232, 245, 233)
-        Note over Worker,PG: Step 2: Async Persistence (Decoupled)
-        loop Every 1 second
-            Worker->>+Redis: XREADGROUP (blocking)
-            Redis-->>-Worker: Batch of pending messages
-            Worker->>+PG: INSERT INTO orders (product, user)
-            PG-->>-Worker: OK
-            Worker->>+Redis: XACK (acknowledge message)
-            Redis-->>-Worker: Ack Confirmed
+    %% PHASE 2: ASYNC PERSISTENCE
+    rect rgb(243, 229, 245)
+        Note over Worker, PG: Phase 2: Asynchronous Micro-Batch Persistence (Decoupled Loop)
+        loop Every 1 Second Ticker
+            Worker->>+Redis: XREADGROUP (Group: flash-sale-workers, Count: 50, Block: 0)
+            Redis-->>-Worker: Array of stream messages
+            
+            alt Message Payload Malformed / Unmarshal Fails
+                Note over Worker: Poison Pill Safeguard Caught
+                Worker->>Redis: XACK sales:orders (Acknowledge to drop message)
+            else Valid Order Structural Payload
+                loop Up to 3 Retries with Exponential Backoff
+                    Worker->>+PG: INSERT INTO orders (id, product_id, user_id)
+                    alt Write Successful
+                        PG-->>Worker: DB Write OK
+                        Note over Worker: Terminate Retry Loop
+                    else Database/Pool Connectivity Error
+                        PG-->>-Worker: Error Response
+                        Note over Worker: Sleep (attempt * 100ms)
+                    end
+                end
+                
+                alt Retention Successful
+                    Worker->>Redis: XACK sales:orders (Mark Complete)
+                else Max Retries Exceeded (Circuit Exhaustion)
+                    Worker->>Redis: XADD orders:dead (Publish to Dead Letter Queue)
+                    Worker->>Redis: XACK sales:orders (Evict from active processing stream)
+                end
+            end
+        end
+    end
+
+    %% PHASE 3: OUT OF BAND CRON
+    rect rgb(224, 242, 241)
+        Note over Recon, PG: Phase 3: Out-of-Band Integrity Protection
+        loop Every 5 Minutes via Cron Expression
+            Recon->>+Redis: GET inventory:product:1
+            Redis-->>-Recon: current_redis_stock
+            Recon->>+PG: SELECT COUNT(*) WHERE product_id = 1
+            PG-->>-Recon: persisted_order_count
+            
+            Note over Recon: Compute Expected Stock = (100 - count)
+            alt current_redis_stock != expected_stock
+                Note over Recon: Structural Drift Identified
+                Recon->>Redis: SET inventory:product:1 expected_stock (Capped at 0)
+            end
         end
     end
 ```
